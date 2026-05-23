@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+.venv/
+
+# Dataset
+ProcessedDataset/
+MyDataset/
+annotations/
+HaGRIDv2_dataset_512/
+
+# PyTorch
+*.pt
+
+# macOS
+.DS_Store
+
+# PyCharm
+.idea/

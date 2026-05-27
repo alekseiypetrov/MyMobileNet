@@ -1,5 +1,5 @@
-coremltools~=9.0
-torch~=2.5.1+cu121
-torchvision~=0.20.1+cu121
-scikit-learn~=1.8.0
-pillow~=12.2.0
+coremltools
+torch
+torchvision
+scikit-learn
+pillow

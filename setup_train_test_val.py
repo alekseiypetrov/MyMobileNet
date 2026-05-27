@@ -8,6 +8,8 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 from sklearn.metrics import confusion_matrix, classification_report
 
+NUM_WORKERS = os.cpu_count()
+
 train_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.RandomHorizontalFlip(),
@@ -26,9 +28,20 @@ train_set = torchvision.datasets.ImageFolder(root='./ProcessedDataset/train', tr
 val_set = torchvision.datasets.ImageFolder(root='./ProcessedDataset/val', transform=val_test_transform)
 test_set = torchvision.datasets.ImageFolder(root='./ProcessedDataset/test', transform=val_test_transform)
 
-train_loader = torch.utils.data.DataLoader(train_set, batch_size=32, shuffle=True, num_workers=6)
-val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=6)
-test_loader = torch.utils.data.DataLoader(test_set, batch_size=32, shuffle=False, num_workers=6)
+train_loader = torch.utils.data.DataLoader(train_set, batch_size=32, shuffle=True, num_workers=NUM_WORKERS)
+val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, num_workers=NUM_WORKERS)
+test_loader = torch.utils.data.DataLoader(test_set, batch_size=32, shuffle=False, num_workers=NUM_WORKERS)
+
+
+class WrapperModel(nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        logits = self.model(x)
+        return self.softmax(logits)
 
 
 class MyMobileNet(nn.Module):
@@ -148,14 +161,16 @@ class MyMobileNet(nn.Module):
     # конвертация для CoreML
     def convert_to_coreml(self):
         self.model.eval()
+        wrapper_model = WrapperModel(self.model)
+        wrapper_model.eval()
         example_input = torch.rand(1, 3, 224, 224).to(self.device)
-        traced_model = torch.jit.trace(self.model, example_input)
+        traced_model = torch.jit.trace(wrapper_model, example_input)
         coreml_model = ct.convert(
             traced_model,
             inputs=[ct.ImageType(
                 name="input_image",
                 shape=example_input.shape,
-                scale=1 / 255.0 * 0.229,
+                scale=1 / 255.0,
                 bias=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225])
             ],
             classifier_config=ct.ClassifierConfig(self.model_classes)

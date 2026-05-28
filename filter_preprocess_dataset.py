@@ -61,22 +61,40 @@ def process_dataset(annotations):
                     if bbox is None:
                         print(f"[WARNING] Нет bbox для класса {class_dir.name}: {image_id}")
                         continue
+
+                    # Вычисление координат относительно изображения
                     x, y, width, height = bbox
 
                     # Загрузка изображения
                     image = Image.open(image_path).convert("RGB")
                     img_w, img_h = image.size
 
-                    # Вычисление координат относительно изображения
-                    left = int(x * img_w)
-                    top = int(y * img_h)
-                    right = int((x + width) * img_w)
-                    bottom = int((y + height) * img_h)
+                    # Добавляем паддинг (например, 15% от размера bbox с каждой стороны)
+                    pad_w = width * PADDING
+                    pad_h = height * PADDING
 
+                    left = int((x - pad_w) * img_w)
+                    top = int((y - pad_h) * img_h)
+                    right = int((x + width + pad_w) * img_w)
+                    bottom = int((y + height + pad_h) * img_h)
+
+                    # Ограничиваем, чтобы не выйти за рамки исходной картинки
                     left = max(0, left)
                     top = max(0, top)
                     right = min(img_w, right)
                     bottom = min(img_h, bottom)
+                    # x, y, width, height = bbox
+                    #
+                    # # Вычисление координат относительно изображения
+                    # left = int(x * img_w)
+                    # top = int(y * img_h)
+                    # right = int((x + width) * img_w)
+                    # bottom = int((y + height) * img_h)
+                    #
+                    # left = max(0, left)
+                    # top = max(0, top)
+                    # right = min(img_w, right)
+                    # bottom = min(img_h, bottom)
 
                     # Обрезка изображения
                     if right <= left or bottom <= top:

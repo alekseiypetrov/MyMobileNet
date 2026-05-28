@@ -12,12 +12,17 @@ NUM_WORKERS = os.cpu_count()
 
 train_transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+    # зеркальность фронталки / левая-правая рука
+    transforms.RandomHorizontalFlip(p=0.5),
+    # наклоны телефона или кисти (15 градусов)
+    transforms.RandomRotation(15),
+    # легкое изменение яркости и контраста
+    transforms.ColorJitter(brightness=0.15, contrast=0.15),
+    # перевод в тензор и нормализация
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
+
 val_test_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -33,17 +38,6 @@ val_loader = torch.utils.data.DataLoader(val_set, batch_size=32, shuffle=False, 
 test_loader = torch.utils.data.DataLoader(test_set, batch_size=32, shuffle=False, num_workers=NUM_WORKERS)
 
 
-class WrapperModel(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-        self.softmax = nn.Softmax(dim=1)
-
-    def forward(self, x):
-        logits = self.model(x)
-        return self.softmax(logits)
-
-
 class MyMobileNet(nn.Module):
     # Загрузка и настройка предобученной модели MobileNetV3
     def __init__(self, classes):
@@ -53,6 +47,11 @@ class MyMobileNet(nn.Module):
 
         for param in self.model.features.parameters():
             param.requires_grad = False
+
+        # размораживаем последние слои
+        for param in self.model.features[-3:].parameters():
+            param.requires_grad = True
+
         num_ftrs = self.model.classifier[3].in_features
         self.model.classifier[3] = nn.Linear(num_ftrs, len(self.model_classes))
 
@@ -62,14 +61,16 @@ class MyMobileNet(nn.Module):
 
         # Функция потерь и оптимизатор
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.Adam(self.model.classifier.parameters(), lr=0.001)
+        self.optimizer = optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr=0.0003)
 
     # Обучение модели
     def train_model(self, trainloader, valloader, epochs=10):
         patience = 3
         patience_counter = 0
 
+        print('Начало обучения')
         for epoch in range(epochs):
+            print(f'Эпоха: {epoch}')
             self.model.train()
             running_loss = 0.0
             correct = 0
@@ -161,19 +162,18 @@ class MyMobileNet(nn.Module):
     # конвертация для CoreML
     def convert_to_coreml(self):
         self.model.eval()
-        wrapper_model = WrapperModel(self.model)
-        wrapper_model.eval()
         example_input = torch.rand(1, 3, 224, 224).to(self.device)
-        traced_model = torch.jit.trace(wrapper_model, example_input)
+        traced_model = torch.jit.trace(self.model, example_input)
         coreml_model = ct.convert(
             traced_model,
             inputs=[ct.ImageType(
                 name="input_image",
                 shape=example_input.shape,
-                scale=1 / 255.0,
+                scale=1.0 / (255.0 * 0.226),
                 bias=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.225])
             ],
-            classifier_config=ct.ClassifierConfig(self.model_classes)
+            classifier_config=ct.ClassifierConfig(self.model_classes),
+            minimum_deployment_target=ct.target.iOS13,
         )
 
         coreml_model.save("GestureClassifier.mlpackage")
@@ -182,13 +182,14 @@ class MyMobileNet(nn.Module):
 
 
 if __name__ == '__main__':
-    TRAIN_MODEL = False
+    TRAIN_MODEL = True
     model = MyMobileNet(train_set.classes)
     if TRAIN_MODEL or not os.path.exists("./best_mobilenetv3.pth"):
-        model.train_model(train_loader, val_loader, epochs=10)
+        model.train_model(train_loader, val_loader)
 
     model.model.load_state_dict(torch.load("best_mobilenetv3.pth", weights_only=True))
     model.test_model(test_loader)
 
-    # выполнение конвертации осуществляется исключительно на MacOS
-    model.convert_to_coreml()
+    if not TRAIN_MODEL:
+        # выполнение конвертации осуществляется исключительно на MacOS
+        model.convert_to_coreml()

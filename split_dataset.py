@@ -12,12 +12,12 @@ DEST_ROOT = Path(r".\MyDataset")
 
 # Соответствие названий жестов "папка в HaGRID" -> "моя папка"
 CLASSES = {
-    "_call": "call",
+    "fist": "fist",
     "_like": "like",
     "_ok": "ok",
     "_palm": "palm",
-    "_peace_inverted": "peace_inverted",
-    "_no_gesture": "no_gesture"
+    "thumb_index": "thumb_index",
+    # "_no_gesture": "no_gesture"
 }
 
 # Сколько изображений брать с каждого класса
